@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>[쥐냥] 미니 뷰어</title>
+<link rel="icon" type="image/png" href="favicon.png">
+
+<!-- PWA: 홈 화면에 추가하면 풀스크린 앱처럼 동작 -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="favicon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="미니 뷰어">
+<meta name="theme-color" content="#10b981">
+
+<!-- 카카오톡·SNS 공유 미리보기 (OpenGraph) -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="[쥐냥] 미니 뷰어">
+<meta property="og:description" content="180×180 미니 이모티콘을 격자로 이어 붙여 상하좌우 연결 상태를 확인">
+<meta property="og:image" content="favicon.png">
+<meta property="og:locale" content="ko_KR">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+    max-width: 880px; margin: 0 auto; padding: 32px 20px;
+    background: #f6f7f9; color: #1f2328;
+  }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -.5px; }
+  .sub { color: #6b7280; font-size: 13px; margin-bottom: 8px; }
+  .edition-badge {
+    display: inline-block; margin-bottom: 18px;
+    background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7;
+    padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    letter-spacing: .04em;
+  }
+
+  .card {
+    background: #fff; border-radius: 12px; padding: 20px 22px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04), 0 1px 0 rgba(0,0,0,.02);
+    margin-bottom: 16px;
+  }
+  .card h2 { font-size: 14px; margin: 0 0 14px; color: #374151; letter-spacing: .2px; }
+
+  /* 슬림 안내 바 (클릭하면 팝업) */
+  .notice-bar {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 13px 16px; background: #fff0f3; border: 1.5px solid #ffcdd2;
+    border-radius: 12px; cursor: pointer; margin-bottom: 18px; transition: .15s;
+  }
+  .notice-bar:hover { background: #fce4ec; }
+  .notice-bar:active { transform: scale(1.01); }
+  .notice-bar-text { font-size: 13px; font-weight: 700; color: #e91e63; }
+
+  /* 안내 팝업 */
+  .popup-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4);
+    z-index: 1000; align-items: center; justify-content: center; padding: 16px;
+  }
+  .popup-overlay.active { display: flex; }
+  .popup-box {
+    background: #fff; border-radius: 16px; padding: 24px 22px 18px; width: 100%;
+    max-width: 480px; max-height: 82vh; overflow: hidden; position: relative;
+    box-shadow: 0 8px 40px rgba(0,0,0,.2); display: flex; flex-direction: column;
+  }
+  .popup-title { font-size: 15px; font-weight: 800; color: #e91e63; text-align: center; margin-bottom: 14px; }
+  .popup-close { position: absolute; top: 14px; right: 16px; background: none; border: 0; font-size: 20px; color: #9ca3af; cursor: pointer; }
+  .popup-close:hover { color: #374151; }
+  .popup-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .popup-tab {
+    flex: 1; padding: 8px 10px; border: 2px solid #e5e7eb; border-radius: 8px;
+    background: #fff; color: #9ca3af; font-size: 12px; font-weight: 700; cursor: pointer;
+    text-align: center; font-family: inherit; transition: .15s;
+  }
+  .popup-tab.active { border-color: #ffcdd2; background: #fff0f3; color: #e91e63; }
+  .popup-scroll { flex: 1; overflow-y: auto; font-size: 12.5px; color: #4b5563; line-height: 1.75; }
+  .popup-scroll .sec-title { font-weight: 800; font-size: 13px; margin: 16px 0 5px; color:#1f2937; }
+  .popup-scroll .sec-title:first-child { margin-top: 0; }
+  .popup-scroll ul { margin: 0; padding-left: 17px; }
+  .popup-scroll li { margin: 4px 0; }
+  .popup-scroll b { color: #1f2937; }
+  .ex-box {
+    border-radius: 10px; padding: 11px 13px; font-size: 11.5px; line-height: 1.9;
+    margin: 8px 0 4px;
+  }
+  .ex-box.green { background: #f0fdf4; border: 1.5px dashed #86efac; }
+  .ex-box.yellow { background: #fffbeb; border: 1.5px dashed #fcd34d; }
+
+  /* ===== 컨트롤 행 ===== */
+  .row { display: flex; align-items: center; gap: 14px; margin: 10px 0; flex-wrap: wrap; }
+  .row .label { min-width: 64px; font-size: 13px; color: #374151; font-weight: 600; }
+  input[type=number] {
+    width: 62px; background: #fff; color: #1f2328; border: 1px solid #d1d5db;
+    border-radius: 8px; padding: 8px; font-size: 14px; text-align: center;
+  }
+
+  /* 프리셋 / 토글 버튼 */
+  button {
+    background: #fff; color: #374151; border: 1px solid #d1d5db;
+    border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: .15s; font-family: inherit;
+  }
+  button:hover { background: #f3f4f6; }
+  button.active { background: #10b981; color: #fff; border-color: #10b981; }
+  button.primary { background: #10b981; color: #fff; border-color: #10b981; }
+  button.primary:hover { background: #059669; }
+  button.primary:disabled { background: #d1d5db; border-color:#d1d5db; cursor: not-allowed; }
+  button.ghost-danger:hover { background: #fef2f2; color:#dc2626; border-color:#fecaca; }
+
+  .seg { display: inline-flex; gap: 4px; padding: 4px; background: #eef0f3; border-radius: 999px; }
+  .seg button { border: 0; background: transparent; padding: 7px 14px; border-radius: 999px; color:#6b7280; }
+  .seg button.active { background: #fff; color: #111827; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+
+  .filebtn {
+    display:inline-block; background: #10b981; color:#fff; border:1px solid #10b981;
+    border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 700; cursor: pointer;
+    transition:.15s;
+  }
+  .filebtn:hover { background:#059669; }
+  input[type=file] { display: none; }
+
+  /* 줌 슬라이더 */
+  input[type=range] { flex:1; min-width:120px; accent-color: #10b981; }
+  .zoomval { font-size: 12px; color: #6b7280; width: 48px; text-align: right; font-weight:600; }
+
+  /* ===== 타일 미리보기 영역 ===== */
+  .stage-wrap {
+    overflow: auto; background: var(--preview-bg, #b2c7d9); border-radius: 10px; padding: 16px;
+    -webkit-overflow-scrolling: touch; transition: background .15s;
+  }
+  .stage { display: inline-block; min-width: 100%; }
+  .grid {
+    display: grid; gap: 0;            /* 핵심: 칸 사이 간격 0 */
+    margin: 0 auto; width: max-content;
+    background: #fff; box-shadow: 0 0 0 1px #d1d5db;
+  }
+  .cell {
+    width: var(--cell, 100px); height: var(--cell, 100px);
+    position: relative; overflow: hidden; cursor: pointer;
+    background-color: var(--preview-bg, #b2c7d9);
+  }
+  /* 투명 모드일 때만 체커보드 표시 */
+  .grid.checker .cell {
+    background-color: #fff;
+    background-image:
+      linear-gradient(45deg, #e9ebef 25%, transparent 25%),
+      linear-gradient(-45deg, #e9ebef 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #e9ebef 75%),
+      linear-gradient(-45deg, transparent 75%, #e9ebef 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  }
+  .cell img {
+    display: block;          /* 핵심: inline 여백 제거 */
+    width: 100%; height: 100%;
+    object-fit: fill;        /* 180×180 원본을 칸에 정확히 채움 */
+    pointer-events: none;
+    -webkit-user-drag: none; user-select: none;
+  }
+  /* 채워진 칸은 드래그해서 다른 칸으로 자리 이동 */
+  .cell.filled { cursor: grab; touch-action: none; }
+  .cell.dragging { cursor: grabbing; }
+  .cell.dragging img { opacity: .25; }
+  .cell.drop-target { outline: 3px solid #10b981; outline-offset: -3px; z-index: 5; }
+
+  /* 드래그 중 커서를 따라다니는 고스트 */
+  .drag-ghost {
+    position: fixed; z-index: 2000; pointer-events: none;
+    object-fit: fill; opacity: .9; border-radius: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  }
+  .grid.show-lines .cell { box-shadow: inset 0 0 0 0.5px rgba(16,185,129,.5); }
+  .grid.show-index .cell .badge { opacity: 1; }
+  .cell .badge {
+    position: absolute; top: 3px; left: 3px; z-index: 2; font-size: 10px; color: #fff;
+    background: rgba(17,24,39,.7); border-radius: 4px; padding: 1px 5px;
+    opacity: 0; transition: .1s; font-family: "SF Mono", Menlo, monospace;
+  }
+  .cell.dragover { outline: 3px dashed #10b981; outline-offset: -3px; z-index: 3; }
+
+  /* 빈 칸: 클릭하면 이미지 추가 (＋ 표시) */
+  .cell.empty::after {
+    content: "＋"; position: absolute; inset: 0; z-index: 1;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; font-weight: 300; color: rgba(255,255,255,.6);
+  }
+  .cell.empty:hover::after { color: #10b981; }
+
+  /* 칸별 개별 삭제 버튼 */
+  .cell .del {
+    position: absolute; top: 4px; right: 4px; z-index: 4;
+    width: 22px; height: 22px; border-radius: 50%; padding: 0;
+    background: rgba(17,24,39,.62); color: #fff; border: 0;
+    font-size: 13px; line-height: 1; cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+  }
+  .cell .del:hover { background: #ef4444; }
+  /* 마우스 환경: 칸에 올렸을 때만 × 표시 */
+  @media (hover: hover) {
+    .cell.filled:hover .del { display: flex; }
+  }
+  /* 터치 환경(hover 없음): 항상 표시 */
+  @media (hover: none) {
+    .cell.filled .del { display: flex; }
+  }
+
+  /* ===== 배경컬러 스와치 ===== */
+  .swatches { display: inline-flex; gap: 8px; }
+  .swatch {
+    width: 34px; height: 34px; border-radius: 8px; cursor: pointer; padding: 0;
+    border: 2px solid #d1d5db; position: relative; transition: .12s;
+  }
+  .swatch:hover { transform: translateY(-1px); }
+  .swatch.active { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,.25); }
+  .swatch.active::after {
+    content: "✓"; position: absolute; inset: 0; display: flex;
+    align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 800; color: #3b82f6;
+  }
+  /* 검정 배경 위 체크는 흰색 */
+  .swatch.dark.active::after { color: #fff; }
+  .swatch.checker {
+    background-color: #fff;
+    background-image:
+      linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
+      linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #e5e7eb 75%),
+      linear-gradient(-45deg, transparent 75%, #e5e7eb 75%);
+    background-size: 10px 10px;
+    background-position: 0 0, 0 5px, 5px -5px, -5px 0;
+  }
+
+  .site-footer {
+    margin-top: 32px; padding: 16px 12px;
+    font-size: 11px; color: #999; text-align: center; letter-spacing: 0.04em;
+  }
+</style>
+</head>
+<body>
+
+<h1>[쥐냥] 미니 뷰어</h1>
+<div class="sub">180×180 미니 이모티콘을 격자로 이어 붙여 상하좌우 연결 상태를 확인</div>
+<span class="edition-badge">🧩 MINI EMOTICON EDITION</span>
+
+<div class="notice-bar" onclick="openNoticePopup()">
+  <span class="notice-bar-text">📝 사용하기 전에 꼭 확인하세요 ▸</span>
+</div>
+
+<!-- 안내 팝업 -->
+<div class="popup-overlay" id="noticePopup" onclick="if(event.target===this)closeNoticePopup()">
+  <div class="popup-box">
+    <button class="popup-close" onclick="closeNoticePopup()">✕</button>
+    <div class="popup-title">📝 사용하기 전에 꼭 확인하세요</div>
+
+    <div class="popup-tabs">
+      <button class="popup-tab active" id="popTab1" onclick="switchPopupTab(1)">🎯 사용 방법</button>
+      <button class="popup-tab" id="popTab2" onclick="switchPopupTab(2)">⚠️ 꼭 지켜주세요</button>
+    </div>
+
+    <div class="popup-scroll">
+      <!-- 탭 1 -->
+      <div id="popContent1">
+        <p style="margin:0 0 14px;color:#db2777;font-weight:700;">
+          미니 이모티콘은 위·아래·옆으로 이어 붙여 쓰죠.<br>이 도구로 칸을 채워 연결 부위가 자연스러운지 한눈에 확인하세요.
+        </p>
+        <div class="sec-title">1. 격자 크기 정하기</div>
+        <ul>
+          <li><b>프리셋</b>에서 <b>6×7</b> 또는 <b>3×3</b>을 누르거나</li>
+          <li><b>가로·세로 칸 수</b>를 직접 입력하고 <b>적용</b></li>
+        </ul>
+        <div class="sec-title">2. 칸에 바로 이미지 넣기</div>
+        <ul>
+          <li>빈 칸(<b>＋</b>)을 클릭하면 파일 선택창이 열려 그 칸부터 채워집니다</li>
+          <li>파일을 <b>드래그앤드롭</b>하면 항상 <b>1번 칸부터</b> 순서대로 들어갑니다</li>
+          <li>칸 모서리의 <b>×</b> 버튼으로 한 칸씩 개별 삭제</li>
+        </ul>
+        <div class="ex-box green">
+          📐 <b>180×180 파일만</b> 들어갑니다. 다른 크기는 자동으로 걸러지고 어떤 파일이 제외됐는지 알려줘요.
+        </div>
+        <div class="sec-title">3. 자리 이동 & 연결 확인</div>
+        <ul>
+          <li>그림을 <b>다른 칸으로 드래그</b>하면 그 칸으로 자리가 옮겨집니다</li>
+          <li>옮길 곳에 이미 그림이 있으면 <b>서로 자리 교환</b>됩니다</li>
+          <li><b>배경컬러</b>를 카카오 채팅방색으로 두고, <b>격자선</b>을 끄면 진짜 연결 모습 확인</li>
+        </ul>
+      </div>
+
+      <!-- 탭 2 -->
+      <div id="popContent2" style="display:none;">
+        <div class="sec-title">권장 규격</div>
+        <ul>
+          <li>이미지는 <b>정사각형(180×180)</b>을 권장합니다</li>
+          <li>비율이 달라도 칸에 맞게 채워지지만, 연결 확인은 정사각형이 정확합니다</li>
+        </ul>
+        <div class="sec-title">칸 사이 틈</div>
+        <div class="ex-box yellow">
+          이 도구는 칸 사이 간격을 <b>0</b>으로 두어, 실제 붙였을 때와 똑같이 보여줍니다.
+          이음매에 흰 줄이 보인다면 그건 <b>이미지 자체의 여백</b>일 가능성이 큽니다.
+        </div>
+        <div class="sec-title">투명 배경</div>
+        <ul>
+          <li>회색 체커보드 무늬는 <b>투명 영역</b> 표시입니다 (실제로는 안 보임)</li>
+        </ul>
+        <div class="sec-title">데이터 저장</div>
+        <ul>
+          <li>모든 처리는 <b>내 브라우저 안에서만</b> 일어나고 어디에도 전송되지 않습니다</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 1. 격자 설정 -->
+<div class="card">
+  <h2>1. 격자 설정</h2>
+  <div class="row">
+    <span class="label">프리셋</span>
+    <div class="seg">
+      <button id="preset67" class="active">6 × 7</button>
+      <button id="preset33">3 × 3</button>
+    </div>
+  </div>
+  <div class="row">
+    <span class="label">직접 입력</span>
+    가로 <input type="number" id="cols" min="1" max="20" value="6">
+    세로 <input type="number" id="rows" min="1" max="20" value="7">
+    <button id="apply" class="primary">적용</button>
+  </div>
+</div>
+
+<!-- 2. 미리보기 & 배치 -->
+<div class="card">
+  <h2>2. 연결 미리보기 & 배치</h2>
+  <div class="row">
+    <span class="label">배경컬러 선택</span>
+    <div class="swatches" id="swatches">
+      <button class="swatch active" data-bg="#b2c7d9" style="background:#b2c7d9" title="카카오톡 채팅방"></button>
+      <button class="swatch" data-bg="#fee500" style="background:#fee500" title="카카오 옐로우"></button>
+      <button class="swatch" data-bg="#ffffff" style="background:#ffffff" title="흰색"></button>
+      <button class="swatch dark" data-bg="#000000" style="background:#000000" title="검정"></button>
+      <button class="swatch checker" data-bg="transparent" title="투명 (체커보드)"></button>
+    </div>
+  </div>
+  <div class="row">
+    <button id="toggleLines">격자선 표시</button>
+    <button id="toggleIndex">번호 표시</button>
+    <button id="clearAll" class="ghost-danger">전체 비우기</button>
+  </div>
+  <div class="row">
+    <span class="label">줌</span>
+    <input type="range" id="zoom" min="40" max="180" value="100">
+    <span class="zoomval" id="zoomVal">100px</span>
+  </div>
+  <div class="stage-wrap">
+    <div class="stage">
+      <div class="grid" id="grid"></div>
+    </div>
+  </div>
+  <p style="font-size:11.5px;color:#9ca3af;margin:10px 2px 0;">
+    빈 칸(＋) 클릭 = 이미지 추가 · 파일을 드래그앤드롭하면 <b>1번 칸부터</b> 순서대로 채워짐 · 칸의 <b>×</b> = 개별 삭제 ·
+    그림을 <b>다른 칸으로 드래그</b>하면 자리 이동(둘 다 있으면 교환) (📐 180×180 파일만)
+  </p>
+  <input type="file" id="cellFile" accept="image/*" multiple style="display:none">
+</div>
+
+<footer class="site-footer">
+  © 2026 G.NYANG. All rights reserved.
+</footer>
+
+<script>
+(() => {
+  const grid    = document.getElementById('grid');
+  const colsInp = document.getElementById('cols');
+  const rowsInp = document.getElementById('rows');
+  const cellFile = document.getElementById('cellFile');
+
+  let cells = [];
+  let drag = null;
+  let suppressClick = false; // 드래그 직후 따라오는 합성 click 무시
+  let pendingIndex = null;   // 파일 다이얼로그로 추가할 시작 칸
+
+  /* ---------- 그리드 ---------- */
+  function buildGrid(cols, rows){
+    grid.style.gridTemplateColumns = `repeat(${cols}, var(--cell, 100px))`;
+    grid.innerHTML = '';
+    cells = [];
+    for(let i = 0; i < cols * rows; i++){
+      const cell = document.createElement('div');
+      cell.className = 'cell empty';
+
+      const badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.textContent = i + 1;
+      cell.appendChild(badge);
+
+      const del = document.createElement('button');
+      del.className = 'del'; del.textContent = '×'; del.title = '이 칸 비우기';
+      del.addEventListener('click', (e) => { e.stopPropagation(); clearCell(cell); });
+      cell.appendChild(del);
+
+      // 빈 칸 클릭 → 이 칸부터 파일 추가
+      cell.addEventListener('click', () => {
+        if(suppressClick) return;                 // 드래그 직후의 click이면 무시
+        if(cell.classList.contains('filled')) return;
+        pendingIndex = cells.indexOf(cell);
+        cellFile.value = '';
+        cellFile.click();
+      });
+
+      // 파일 드래그앤드롭
+      cell.addEventListener('dragover', (e) => { e.preventDefault(); cell.classList.add('dragover'); });
+      cell.addEventListener('dragleave', () => cell.classList.remove('dragover'));
+      cell.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        cell.classList.remove('dragover');
+        const files = [...(e.dataTransfer.files||[])].filter(f => f.type.startsWith('image/'));
+        if(files.length) await placeFiles(files, 0);   // 드롭은 항상 1번 칸부터 순서대로
+      });
+
+      // 채워진 칸을 드래그해서 다른 칸으로 자리 이동
+      cell.addEventListener('pointerdown', (e) => {
+        if(e.button !== 0) return;
+        const img = cell.querySelector('img');
+        if(!img || e.target.closest('.del')) return;
+        e.preventDefault();
+        const rect = cell.getBoundingClientRect();
+        const ghost = document.createElement('img');
+        ghost.src = img.src; ghost.className = 'drag-ghost';
+        ghost.style.width = rect.width + 'px';
+        ghost.style.height = rect.height + 'px';
+        document.body.appendChild(ghost);
+        drag = { srcCell: cell, ghost, moved: false, sx: e.clientX, sy: e.clientY };
+        cell.classList.add('dragging');
+        positionGhost(e.clientX, e.clientY);
+        if(cell.setPointerCapture) cell.setPointerCapture(e.pointerId);
+      });
+
+      grid.appendChild(cell);
+      cells.push(cell);
+    }
+  }
+
+  function setCellImage(cell, src){
+    cell.querySelectorAll('img').forEach(i => i.remove());
+    const img = document.createElement('img');
+    img.src = src; img.draggable = false;
+    cell.appendChild(img);
+    cell.classList.add('filled'); cell.classList.remove('empty');
+  }
+  function clearCell(cell){
+    cell.querySelectorAll('img').forEach(i => i.remove());
+    cell.classList.remove('filled'); cell.classList.add('empty');
+  }
+
+  /* ---------- 이미지 추가 (180×180만 허용) ---------- */
+  function readFile(file){
+    return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(file); });
+  }
+  function checkSize(file){
+    return new Promise(res => {
+      const url = URL.createObjectURL(file);
+      const im = new Image();
+      im.onload = () => { res({ w: im.naturalWidth, h: im.naturalHeight }); URL.revokeObjectURL(url); };
+      im.onerror = () => { res(null); URL.revokeObjectURL(url); };
+      im.src = url;
+    });
+  }
+  async function placeFiles(files, startIdx){
+    let search = startIdx;
+    const rejected = [];
+    for(const f of files){
+      const dim = await checkSize(f);
+      if(!dim){ rejected.push(`${f.name} (열 수 없음)`); continue; }
+      if(dim.w !== 180 || dim.h !== 180){ rejected.push(`${f.name} → ${dim.w}×${dim.h}`); continue; }
+      // startIdx부터 다음 빈 칸을 찾아 순서대로 채움 (이미 든 칸은 건너뜀)
+      while(search < cells.length && cells[search].classList.contains('filled')) search++;
+      if(search >= cells.length) break;
+      setCellImage(cells[search], await readFile(f));
+      search++;
+    }
+    if(rejected.length){
+      alert('📐 180×180 파일만 넣을 수 있어요.\n\n제외된 파일:\n• ' + rejected.join('\n• '));
+    }
+  }
+  cellFile.addEventListener('change', async (e) => {
+    const files = [...e.target.files].filter(f => f.type.startsWith('image/'));
+    const start = (pendingIndex == null) ? 0 : pendingIndex;
+    if(files.length) await placeFiles(files, start);
+    e.target.value = ''; pendingIndex = null;
+  });
+
+  /* ---------- 자리 이동 드래그 ---------- */
+  function positionGhost(x, y){
+    if(!drag) return;
+    const w = drag.ghost.offsetWidth, h = drag.ghost.offsetHeight;
+    drag.ghost.style.left = (x - w/2) + 'px';
+    drag.ghost.style.top  = (y - h/2) + 'px';
+  }
+  function cellFromPoint(x, y){
+    const el = document.elementFromPoint(x, y);
+    return el ? el.closest('.cell') : null;
+  }
+  function clearTargets(){ cells.forEach(c => c.classList.remove('drop-target')); }
+
+  window.addEventListener('pointermove', (e) => {
+    if(!drag) return;
+    const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+    if(!drag.moved && Math.hypot(dx, dy) > 3) drag.moved = true;
+    if(!drag.moved) return;
+    e.preventDefault();
+    positionGhost(e.clientX, e.clientY);
+    clearTargets();
+    const t = cellFromPoint(e.clientX, e.clientY);
+    if(t && t !== drag.srcCell) t.classList.add('drop-target');
+  });
+
+  window.addEventListener('pointerup', (e) => {
+    if(!drag) return;
+    const { srcCell, ghost, moved } = drag;
+    ghost.remove();
+    srcCell.classList.remove('dragging');
+    clearTargets();
+    drag = null;
+    if(!moved) return;                              // 그냥 클릭(이동 안 함)
+    suppressClick = true;                           // 뒤따라올 합성 click 1회 무시
+    setTimeout(() => { suppressClick = false; }, 0);
+    const target = cellFromPoint(e.clientX, e.clientY);
+    if(!target || target === srcCell) return;
+    const srcImg = srcCell.querySelector('img');
+    const tgtImg = target.querySelector('img');
+    const srcSrc = srcImg ? srcImg.src : null;
+    const tgtSrc = tgtImg ? tgtImg.src : null;
+    if(tgtSrc){                                     // 둘 다 있으면 자리 교환
+      setCellImage(srcCell, tgtSrc);
+      setCellImage(target, srcSrc);
+    } else {                                        // 빈 칸이면 이동
+      clearCell(srcCell);
+      setCellImage(target, srcSrc);
+    }
+  });
+
+  /* ---------- 격자 설정 ---------- */
+  function clamp(v){ return Math.max(1, Math.min(20, parseInt(v)||1)); }
+  function setGrid(c, r, fromPreset){
+    colsInp.value = c; rowsInp.value = r;
+    buildGrid(c, r);
+    document.getElementById('preset67').classList.toggle('active', fromPreset && c===6 && r===7);
+    document.getElementById('preset33').classList.toggle('active', fromPreset && c===3 && r===3);
+  }
+  document.getElementById('apply').addEventListener('click', () => setGrid(clamp(colsInp.value), clamp(rowsInp.value), false));
+  document.getElementById('preset67').addEventListener('click', () => setGrid(6,7,true));
+  document.getElementById('preset33').addEventListener('click', () => setGrid(3,3,true));
+
+  /* ---------- 미리보기 컨트롤 ---------- */
+  document.getElementById('clearAll').addEventListener('click', () => cells.forEach(clearCell));
+  document.getElementById('toggleLines').addEventListener('click', (e) => {
+    grid.classList.toggle('show-lines'); e.target.classList.toggle('active');
+  });
+  document.getElementById('toggleIndex').addEventListener('click', (e) => {
+    grid.classList.toggle('show-index'); e.target.classList.toggle('active');
+  });
+
+  const zoom = document.getElementById('zoom');
+  const zoomVal = document.getElementById('zoomVal');
+  zoom.addEventListener('input', () => {
+    document.documentElement.style.setProperty('--cell', zoom.value + 'px');
+    zoomVal.textContent = zoom.value + 'px';
+  });
+
+  /* ---------- 배경컬러 스와치 ---------- */
+  const swatches = document.getElementById('swatches');
+  swatches.addEventListener('click', (e) => {
+    const sw = e.target.closest('.swatch');
+    if(!sw) return;
+    swatches.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+    sw.classList.add('active');
+    const bg = sw.dataset.bg;
+    if(bg === 'transparent'){
+      grid.classList.add('checker');
+      document.documentElement.style.setProperty('--preview-bg', '#eef0f3');
+    } else {
+      grid.classList.remove('checker');
+      document.documentElement.style.setProperty('--preview-bg', bg);
+    }
+  });
+
+  /* 페이지 밖 파일 드롭 방지 */
+  ['dragover','drop'].forEach(ev =>
+    window.addEventListener(ev, e => { if(e.target === document.body) e.preventDefault(); })
+  );
+
+  // 초기화
+  document.documentElement.style.setProperty('--cell', '100px');
+  document.documentElement.style.setProperty('--preview-bg', '#b2c7d9');
+  buildGrid(6, 7);
+})();
+
+/* ---------- 안내 팝업 ---------- */
+function openNoticePopup(){ document.getElementById('noticePopup').classList.add('active'); }
+function closeNoticePopup(){ document.getElementById('noticePopup').classList.remove('active'); }
+function switchPopupTab(n){
+  document.getElementById('popTab1').classList.toggle('active', n===1);
+  document.getElementById('popTab2').classList.toggle('active', n===2);
+  document.getElementById('popContent1').style.display = n===1 ? 'block' : 'none';
+  document.getElementById('popContent2').style.display = n===2 ? 'block' : 'none';
+}
+</script>
+</body>
+</html>
